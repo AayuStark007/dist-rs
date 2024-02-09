@@ -49,7 +49,7 @@ fn main() {
 
     let shared_task_rx = Arc::new(Mutex::new(task_rx));
 
-    let mut thread_stash = Vec::new();
+    let mut threads = Vec::new();
 
     let mut tasks: Vec<Task> = Vec::new();
     for task_id in 0..NTASK {
@@ -67,11 +67,18 @@ fn main() {
         let task_rx_clone = Arc::clone(&shared_task_rx);
         let res_tx_clone = res_tx.clone();
         let thread = thread::spawn(move || loop {
-            let task = task_rx_clone.lock().unwrap().recv().unwrap();
-            let task_result = create_worker(id).process_task(task);
-            res_tx_clone.send(task_result).unwrap();
+            let message = task_rx_clone.lock().unwrap().recv();
+            match message {
+                Ok(task) => {
+                    let task_result = create_worker(id).process_task(task);
+                    res_tx_clone.send(task_result).unwrap();
+                }
+                Err(_) => {
+                    break;
+                }
+            }
         });
-        thread_stash.push(thread);
+        threads.push(thread);
     }
 
     //send tasks
@@ -79,8 +86,24 @@ fn main() {
         task_tx.send(task).unwrap();
     }
 
+    drop(task_tx);
+
     //receive results
-    for result in res_rx {
-        println!("{}", result);
+    loop {
+        let result = res_rx.recv_timeout(Duration::from_secs(5));
+        match result {
+            Ok(message) => {
+                println!("{}", message);
+            }
+            Err(_) => {
+                println!("No more messages.");
+                break;
+            }
+        }
+    }
+
+    // shutdown threads
+    for handle in threads {
+        handle.join().unwrap();
     }
 }
