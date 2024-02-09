@@ -1,12 +1,15 @@
+use rand::Rng;
 use std::sync::mpsc::{Receiver, Sender};
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
+use std::time::Duration;
 
-static NTHREADS: u32 = 2;
+static NTHREADS: u32 = 12;
+static NTASK: u32 = 100;
 
-struct Task<'a> {
+struct Task {
     id: u32,
-    payload: &'a str,
+    payload: String,
 }
 
 struct Worker {
@@ -14,14 +17,24 @@ struct Worker {
 }
 
 fn create_task(id: u32, payload: &str) -> Task {
-    return Task { id, payload };
+    return Task {
+        id,
+        payload: payload.to_string(),
+    };
 }
 
 impl Worker {
     fn process_task(&self, task: Task) -> String {
+        // println!("Worker {0} got task {1}", self.id, task.id);
+
         // simulate task processing
-        println!("Worker {0} got task {1}", self.id, task.id);
-        return String::from(format!("processed: {0} => {1}", task.id, task.payload));
+        let delay = rand::thread_rng().gen_range(200..=1000);
+        thread::sleep(Duration::from_millis(delay));
+
+        return String::from(format!(
+            "[Worker: {0}] Processed {1}::{2} in {3}ms",
+            self.id, task.id, task.payload, delay
+        ));
     }
 }
 
@@ -38,14 +51,16 @@ fn main() {
 
     let mut thread_stash = Vec::new();
 
-    let tasks: Vec<Task> = vec![
-        create_task(0, "zero!"),
-        create_task(1, "one!"),
-        create_task(2, "two!"),
-        create_task(3, "three!"),
-        create_task(4, "four!"),
-        create_task(5, "five!"),
-    ];
+    let mut tasks: Vec<Task> = Vec::new();
+    for task_id in 0..NTASK {
+        let payload = format!("TaskID: {}", task_id);
+        tasks.push(create_task(task_id, &payload));
+    }
+
+    println!(
+        "Start processing with {0} tasks on {1} worker threads",
+        NTASK, NTHREADS
+    );
 
     // setup threads to handle tasks
     for id in 0..NTHREADS {
@@ -66,6 +81,6 @@ fn main() {
 
     //receive results
     for result in res_rx {
-        println!("Received result: {}", result);
+        println!("{}", result);
     }
 }
