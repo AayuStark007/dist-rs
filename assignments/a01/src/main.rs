@@ -3,8 +3,8 @@ use std::sync::{mpsc, Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
-static NTHREADS: u32 = 12;
-static NTASK: u32 = 100;
+static NTHREADS: usize = 12;
+static NTASK: usize = 100;
 
 struct Task {
     id: u32,
@@ -41,17 +41,17 @@ fn create_worker(id: u32) -> Worker {
     return Worker { id };
 }
 
-fn setup_tasks(size: u32) -> Vec<Task> {
+fn setup_tasks(size: usize) -> Vec<Task> {
     let mut tasks: Vec<Task> = Vec::new();
     for task_id in 0..size {
         let payload = format!("TaskID: {}", task_id);
-        tasks.push(create_task(task_id, &payload));
+        tasks.push(create_task(task_id.try_into().unwrap(), &payload));
     }
     return tasks;
 }
 
 fn setup_worker_threads(
-    num_threads: u32,
+    num_threads: usize,
     receiver: mpsc::Receiver<Task>,
     sender: mpsc::Sender<String>,
 ) -> Vec<JoinHandle<()>> {
@@ -61,7 +61,7 @@ fn setup_worker_threads(
         .map(|id| {
             let receiver_clone = Arc::clone(&shared_receiver);
             let sender_clone = sender.clone();
-            let worker = create_worker(id);
+            let worker = create_worker(id.try_into().unwrap());
             let worker_handle = thread::spawn(move || loop {
                 let message = receiver_clone.lock().unwrap().recv();
                 match message {
