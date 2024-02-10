@@ -4,7 +4,7 @@ use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
 static NTHREADS: usize = 1000;
-static NTASK: usize = 10_000_000;
+static NTASK: usize = 1_000_000;
 
 #[derive(Debug, Clone)]
 struct Task {
@@ -113,12 +113,20 @@ fn main() {
     let worker_handles = setup_worker_threads(NTHREADS, task_rx, result_tx);
 
     //send tasks
+    // let _ = thread::spawn(move || {
+    //     for task in tasks {
+    //         task_tx.send(task).unwrap_or_else(|_| {
+    //             println!("Failed to submit a task");
+    //         });
+    //     }
+    //     drop(task_tx);
+    // });
+
     for task in tasks {
         task_tx.send(task).unwrap_or_else(|_| {
             println!("Failed to submit a task");
         });
     }
-
     drop(task_tx);
 
     //receive results
