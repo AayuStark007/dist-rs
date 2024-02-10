@@ -1,5 +1,4 @@
 use rand::Rng;
-use std::sync::mpsc::{Receiver, Sender};
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
@@ -12,15 +11,15 @@ struct Task {
     payload: String,
 }
 
-struct Worker {
-    id: u32,
-}
-
 fn create_task(id: u32, payload: &str) -> Task {
     return Task {
         id,
         payload: payload.to_string(),
     };
+}
+
+struct Worker {
+    id: u32,
 }
 
 impl Worker {
@@ -56,29 +55,28 @@ fn setup_worker_threads(
     receiver: mpsc::Receiver<Task>,
     sender: mpsc::Sender<String>,
 ) -> Vec<JoinHandle<()>> {
-    let mut worker_handles = Vec::new();
-    let shared_receiver = Arc::new(Mutex::new(receiver));
-
     // setup threads to handle tasks
-    for id in 0..num_threads {
-        let receiver_clone = Arc::clone(&shared_receiver);
-        let sender_clone = sender.clone();
-        let worker = create_worker(id);
-        let worker_handle = thread::spawn(move || loop {
-            let message = receiver_clone.lock().unwrap().recv();
-            match message {
-                Ok(task) => {
-                    let task_result = worker.process_task(task);
-                    sender_clone.send(task_result).unwrap();
+    let shared_receiver = Arc::new(Mutex::new(receiver));
+    return (0..num_threads)
+        .map(|id| {
+            let receiver_clone = Arc::clone(&shared_receiver);
+            let sender_clone = sender.clone();
+            let worker = create_worker(id);
+            let worker_handle = thread::spawn(move || loop {
+                let message = receiver_clone.lock().unwrap().recv();
+                match message {
+                    Ok(task) => {
+                        let task_result = worker.process_task(task);
+                        sender_clone.send(task_result).unwrap();
+                    }
+                    Err(_) => {
+                        break;
+                    }
                 }
-                Err(_) => {
-                    break;
-                }
-            }
-        });
-        worker_handles.push(worker_handle);
-    }
-    return worker_handles;
+            });
+            worker_handle
+        })
+        .collect();
 }
 
 fn main() {
