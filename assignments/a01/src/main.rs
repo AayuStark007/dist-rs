@@ -53,22 +53,23 @@ fn setup_tasks(size: u32) -> Vec<Task> {
 
 fn setup_worker_threads(
     num_threads: u32,
-    receiver: Arc<Mutex<mpsc::Receiver<Task>>>,
+    receiver: mpsc::Receiver<Task>,
     sender: mpsc::Sender<String>,
 ) -> Vec<JoinHandle<()>> {
     let mut worker_handles = Vec::new();
+    let shared_receiver = Arc::new(Mutex::new(receiver));
 
     // setup threads to handle tasks
     for id in 0..num_threads {
-        let task_rx_clone = Arc::clone(&receiver);
-        let res_tx_clone = sender.clone();
+        let receiver_clone = Arc::clone(&shared_receiver);
+        let sender_clone = sender.clone();
         let worker = create_worker(id);
         let worker_handle = thread::spawn(move || loop {
-            let message = task_rx_clone.lock().unwrap().recv();
+            let message = receiver_clone.lock().unwrap().recv();
             match message {
                 Ok(task) => {
                     let task_result = worker.process_task(task);
-                    res_tx_clone.send(task_result).unwrap();
+                    sender_clone.send(task_result).unwrap();
                 }
                 Err(_) => {
                     break;
@@ -91,7 +92,7 @@ fn main() {
     let (result_tx, result_rx) = mpsc::channel::<String>();
 
     let tasks = setup_tasks(NTASK);
-    let worker_handles = setup_worker_threads(NTHREADS, Arc::new(Mutex::new(task_rx)), result_tx);
+    let worker_handles = setup_worker_threads(NTHREADS, task_rx, result_tx);
 
     //send tasks
     for task in tasks {
