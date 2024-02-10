@@ -3,9 +3,10 @@ use std::sync::{mpsc, Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
-static NTHREADS: usize = 12;
-static NTASK: usize = 100;
+static NTHREADS: usize = 1000;
+static NTASK: usize = 10_000_000;
 
+#[derive(Debug, Clone)]
 struct Task {
     id: u32,
     payload: String,
@@ -28,7 +29,7 @@ impl Worker {
 
         // simulate task processing
         let delay = rand::thread_rng().gen_range(200..=1000);
-        thread::sleep(Duration::from_millis(delay));
+        // thread::sleep(Duration::from_millis(delay));
 
         return String::from(format!(
             "[Worker: {0}] Processed {1}::{2} in {3}ms",
@@ -63,14 +64,33 @@ fn setup_worker_threads(
             let sender_clone = sender.clone();
             let worker = create_worker(id.try_into().unwrap());
             let worker_handle = thread::spawn(move || loop {
-                let message = receiver_clone.lock().unwrap().recv();
-                match message {
-                    Ok(task) => {
-                        let task_result = worker.process_task(task);
-                        sender_clone.send(task_result).unwrap();
+                let mutex_result = receiver_clone.lock();
+                match mutex_result {
+                    Ok(receiver) => {
+                        let message = receiver.recv_timeout(Duration::from_secs(2));
+                        drop(receiver);
+                        match message {
+                            Ok(task) => {
+                                let task_result = worker.process_task(task.clone());
+                                sender_clone.send(task_result).unwrap_or_else(|_| {
+                                    println!(
+                                        "Thread {} failed to send task result for {}",
+                                        id, task.id
+                                    );
+                                });
+                            }
+                            Err(mpsc::RecvTimeoutError::Timeout) => {
+                                println!("Thread {} timed out on receiver", id);
+                                continue;
+                            }
+                            Err(mpsc::RecvTimeoutError::Disconnected) => {
+                                // channel is closed, thread can terminate
+                                return;
+                            }
+                        }
                     }
                     Err(_) => {
-                        break;
+                        println!("Thread failed to acquire lock, retrying");
                     }
                 }
             });
@@ -94,7 +114,9 @@ fn main() {
 
     //send tasks
     for task in tasks {
-        task_tx.send(task).unwrap();
+        task_tx.send(task).unwrap_or_else(|_| {
+            println!("Failed to submit a task");
+        });
     }
 
     drop(task_tx);
@@ -106,8 +128,12 @@ fn main() {
             Ok(message) => {
                 println!("{}", message);
             }
+            Err(mpsc::RecvTimeoutError::Disconnected) => {
+                println!("No more messages");
+                break;
+            }
             Err(e) => {
-                println!("No more messages. {}", e.to_string());
+                println!("Result read failed {}.", e.to_string());
                 break;
             }
         }
